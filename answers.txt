@@ -1,0 +1,34 @@
+
+3.2 planning task:
+
+1. The server should accept only a subset of users considering security of server.
+
+2. Authentication should not be provided by the RPC system. Instead, authentication should be provided by authentication system implemented in application layer so the server can enforce access control and ensure that only authenticated clients can access the handlers in the server.
+
+3. TCP is chosen. The advantage of TCP are ordered data delivery, reliability, flow control, but TCP could cause latency, slow speed in transmission compared to UDP.
+
+4. The socket of server should be created in rpc_init_server and the socket of client should be created in rpc_init_client.
+
+5. rpc_client should be created dynamically because rpc_client should be close when the client shutdown the connection. Rpc_server should be static allocated because rpc_server is designed to run forever to handle all requests from rpc_clients until the server gets shutdown manually.
+
+6. rpc.c implements portability to ensure that no matter whether big-endian byte order or little-endian byte order are used by two host, rpc_server and rpc_client will transform them into network byte order and, after reading the data, these data will be transformed into the host byte order for further processing.
+
+
+
+3.3 protocol:
+Every number transported is converted and transported in data type uint64_t in network byte order, which ensures that data type in transition is system independent. Numbers read from the network will be converted to the order required by the host system.
+
+Client: rpc_find: send a request index (FIND_INDEX = 10001), length of the function name, name of the funciton client tries to find. Then client will read a read index(0 or 1) indicating whether the function is found . If found(read num = 1), read the address of the function and stored the address with function name. If not found (read num = 0), return null.
+
+        rpc_call: send a request index (CALL_INDEX = 10002), length of the function name, name of the function client calls. Then clients will send data1, data2_len and data2 continuously and read a valid number indicating if the call and result are valid. If not valid(read num = 0), rpc_call will return null. If valid(read num = 1), the client will read data1 and data2_len. If data2_len is 0, it will stops reading and make data2 = null. If not, rpc_client will read data2.
+
+Server: serve_all: Once the server accept a client, it will allocate a thread for this connection. The sevrer will read the request index(FIND_INDEX = 10001 or CALL_INDEX = 10002), the length of function name and function name. If the request index is FIND_INDEX = 10002, the rpc_server will find function for client. If it finds the required one, it will give client the index for FOUND (which is 1) and the address of that function. If it can't find it, it will just return a index for NOT FOUND(which is 0).
+        
+        If the request index is CALL_INDEX = 10002, the rpc_server will read data1 and data2_len. If data2_len = 0, it will assign a null to data2; otherwise, it will read data2. After reading data2, it will process the rpc_data. If the output is not valid, it will write back a index(which is 0) saying the result is not valid. If the result is valid, rpc_server will give client a index for valid result(which is 1), and then send data1 and data2_len to the clinet. If data2_len is 0, data2 will not be sent. Otherwise, the server will send data2 to client. 
+
+
+The max length of data 2 is limited to 100000. If it is > 100000, the server will return a error message. 
+If there is a error in rpc-data or the result of rpc-data processed by the given handler, the server will send a number indicating there is a error in which part of rpc-data.
+The rpc-server will check the data after receiving from the client and the result got from the handler before sending to client. Also, rpc-server will send a number telling the client if data is valid. The rpc-client will get informed if data is corrupted or not in a valid form. Once the rpc-client or rpc-server reports a error, the server or client could know where the error(might be packet loss or corrupted) is. Such mechanism helps server and client deal with errors in data transmission.
+TCP is chosen to implement the RPC system because TCP is reliable, which guarantees none packets loss and corrupted packets, order delivery of packets, error checking which could provides mechanism to detect and correct transmission error and flow control mechanism to ensure that receivers will not get affected by transmission rate of server. TCP is also connection oriented, so it can ensure data is sent to intended receivers. The disadvantages of TCP are slower transmission speeds due to overhead and latency. It is also not suitable for time sensitive and low latency data transmission.
+The IP address is set to be IPv6.
